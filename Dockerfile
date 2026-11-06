@@ -1,25 +1,29 @@
-# Stage 1: Build the Flutter app
-FROM ghcr.io/cirruslabs/flutter:stable AS build
+# 构建 Flutter web 产物只需要 Flutter SDK，无需 Android/iOS 工具链
+# 用官方 flutter:latest，里面内置 Dart 和必要的 build tools
+FROM ghcr.io/cirruslabs/flutter:latest as builder
 
-WORKDIR /app
+WORKDIR /build
 
-# Copy pubspec files and get dependencies
-COPY pubspec.* ./
-RUN flutter pub get
+# 拷贝工程文件，只需要 pubspec 和源码，不需要 build/ 产物
+COPY aoi_tree/pubspec.* ./aoi_tree/
+COPY aoi_tree/lib ./aoi_tree/lib
+COPY aoi_tree/web ./aoi_tree/web
+COPY aoi_tree/assets ./aoi_tree/assets
+COPY aoi_tree/analysis_options.yaml ./aoi_tree/
 
-# Copy all project files
-COPY . .
+WORKDIR /build/aoi_tree
 
-# Build the web app
-RUN flutter build web --release --web-renderer canvaskit
+# 获取依赖并构建 web
+RUN flutter pub get && \
+    flutter build web --release --dart-define=FLUTTER_WEB_USE_SKIA=false
 
-# Stage 2: Serve with nginx
+# 第二阶段：用 nginx 托管
 FROM nginx:alpine
 
-# Copy built web files
-COPY --from=build /app/build/web /usr/share/nginx/html
+# 从构建阶段拷贝静态文件
+COPY --from=builder /build/aoi_tree/build/web /usr/share/nginx/html
 
-# Copy nginx config
+# nginx 配置
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 8080
